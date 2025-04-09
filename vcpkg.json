@@ -9,8 +9,12 @@
     "openssl"
   ],
   "vcpkg-configuration": {
-    "overlay-ports": [
-      "./vcpkg_ports"
+    "registries": [
+      {
+        "kind": "git",
+        "repository": "https://github.com/duckdb/vcpkg-duckdb-ports",
+        "packages": [ "vcpkg-cmake" ]
+      }
     ]
   }
 }
