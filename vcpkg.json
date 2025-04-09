@@ -13,8 +13,10 @@
       {
         "kind": "git",
         "repository": "https://github.com/duckdb/vcpkg-duckdb-ports",
+        "baseline": "2f52a38d91de47c3cb2d5f2972330274aaf0b303",
         "packages": [ "vcpkg-cmake" ]
       }
     ]
-  }
+  },
+  "builtin-baseline" : "5e5d0e1cd7785623065e77eff011afdeec1a3574"
 }
