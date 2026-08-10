@@ -1,0 +1,40 @@
+# name: test/sql/storage/arn.test
+# group: [storage]
+
+require httpfs
+
+require aws
+
+statement ok
+LOAD aws
+
+# Even with 'TYPE arn', the path has to be correct
+statement error
+ATTACH 'aws:s3tables:eu-central-1:840140254803:bucket/duckdb-s3tables-test' as db (
+	TYPE arn
+);
+----
+Invalid Input Error: Expected an AWS ARN of the form 'arn:<partition>:<service>:<region>:<account>:<resource>', got 'aws:s3tables:eu-central-1:840140254803:bucket/duckdb-s3tables-test'
+
+statement error
+ATTACH '' as db (
+	TYPE arn
+);
+----
+Invalid Input Error: Expected an AWS ARN of the form 'arn:<partition>:<service>:<region>:<account>:<resource>', got ''
+
+statement error
+ATTACH 'arn::s3tables:::' as db;
+----
+Invalid Input Error: Invalid PARTITION Section of ARN: ''
+
+statement error
+ATTACH 'arn:aws::::' as db;
+----
+Not implemented Error: ATTACH of AWS ARN service '' is not supported. Supported options are: s3tables
+
+# Correctly delegates to iceberg, fails to load because we haven't 'require'd it in this test
+statement error
+ATTACH 'arn:aws:s3tables:::' as db;
+----
+<REGEX>:.*iceberg.*
