@@ -36,6 +36,12 @@ struct Redshift {
 	static RedshiftClusterInfo DescribeCluster(const std::shared_ptr<Aws::Auth::AWSCredentialsProvider> &provider,
 	                                           const string &cluster_id, const string &region);
 
+	//! Resolve a provisioned Redshift namespace ARN's account/resource components to the cluster
+	//! identifier whose ClusterNamespaceArn matches. DescribeClusters is paginated when necessary.
+	static string ClusterIdentifierFromNamespace(const std::shared_ptr<Aws::Auth::AWSCredentialsProvider> &provider,
+	                                             const string &account_id, const string &resource,
+	                                             const string &region);
+
 	//! Mint temporary database credentials for a cluster via `GetClusterCredentialsWithIAM`. The
 	//! provider supplies (and signs with) the AWS identity; the returned credentials are scoped to
 	//! the cluster and short-lived (see duration_seconds, default ~900s).

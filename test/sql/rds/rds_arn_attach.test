@@ -1,4 +1,4 @@
-# name: test/sql/rds/aws_rds_connect.test
+# name: test/sql/rds/rds_arn_attach.test
 # description: test attaching an RDS instance discovered via DescribeDBInstances + IAM auth
 # group: [rds]
 
@@ -6,38 +6,35 @@ require aws
 
 require parquet
 
-
 # The 'aws' secret type is registered by httpfs.
 require httpfs
 
 require postgres_scanner
 
-require-env RDS_AVAILABLE 1
+require-env AWS_ACCESS_KEY_ID
+
+require-env AWS_SECRET_ACCESS_KEY
 
 set ignore_error_messages
 
 statement ok
-SET allow_persistent_secrets=false
+LOAD aws
 
 statement ok
-CREATE SECRET rds_creds (
-    TYPE aws,
-    PROVIDER credential_chain,
-    REGION 'eu-central-1',
+CREATE SECRET (
+    TYPE s3,
+    KEY_ID '{AWS_ACCESS_KEY_ID}',
+    SECRET '{AWS_SECRET_ACCESS_KEY}',
+    REGION 'eu-central-1'
 );
 
 statement ok
-ATTACH 'duckdb-connect-test' AS rds_db (
-	TYPE RDS,
+ATTACH 'arn:aws:rds:eu-central-1:840140254803:db:duckdb-connect-test' AS rds_db (
 	USER 'user_2'
-);
+)
 
-statement ok
-select * from (show all tables) where database = 'rds_db';
-
-# The dev database should expose exactly 7 tables.
 query I
-SELECT count(*) FROM (SHOW ALL TABLES) WHERE database = 'rds_db';
+select * from (show all tables) where database = 'rds_db';
 ----
 1
 
@@ -54,9 +51,3 @@ select * from rds_db.public.dummy_users order by all limit 10;
 8	user_8	user_8@example.com	NL	34	3101.27	1	2025-08-13 09:40:11.572325+00
 9	user_9	user_9@example.com	BR	21	4192.30	0	2026-03-17 17:24:17.514905+00
 10	user_10	user_10@example.com	DE	46	1158.46	0	2025-12-20 23:27:54.956749+00
-
-statement ok
-DETACH rds_db
-
-statement ok
-DROP SECRET rds_creds

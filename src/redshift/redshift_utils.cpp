@@ -3,6 +3,7 @@
 #include "aws_client.hpp"
 
 #include "duckdb/common/exception.hpp"
+#include "duckdb/common/string_util.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
 
 #include <aws/redshift/RedshiftClient.h>
@@ -59,6 +60,39 @@ RedshiftClusterInfo Redshift::DescribeCluster(const std::shared_ptr<Aws::Auth::A
 		    info.cluster_status);
 	}
 	return info;
+}
+
+string Redshift::ClusterIdentifierFromNamespace(const std::shared_ptr<Aws::Auth::AWSCredentialsProvider> &provider,
+                                                const string &account_id, const string &resource,
+                                                const string &region) {
+	auto redshift_client = MakeClient(provider, region);
+	Aws::Redshift::Model::DescribeClustersRequest request;
+	auto expected_suffix = ":" + account_id + ":" + resource;
+
+	while (true) {
+		auto outcome = redshift_client.DescribeClusters(request);
+		if (!outcome.IsSuccess()) {
+			throw InvalidConfigurationException(
+			    "DescribeClusters failed while resolving Redshift namespace '%s' in account '%s' and region '%s': %s",
+			    resource, account_id, region, string(outcome.GetError().GetMessage().c_str()));
+		}
+
+		for (auto &cluster : outcome.GetResult().GetClusters()) {
+			auto namespace_arn = string(cluster.GetClusterNamespaceArn().c_str());
+			if (StringUtil::EndsWith(namespace_arn, expected_suffix)) {
+				return string(cluster.GetClusterIdentifier().c_str());
+			}
+		}
+
+		auto marker = outcome.GetResult().GetMarker();
+		if (marker.empty()) {
+			break;
+		}
+		request.SetMarker(marker);
+	}
+
+	throw InvalidConfigurationException("No Redshift cluster found for namespace '%s' in account '%s' and region '%s'",
+	                                    resource, account_id, region);
 }
 
 RedshiftIamCredentials

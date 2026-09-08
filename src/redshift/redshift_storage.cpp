@@ -24,6 +24,8 @@ namespace {
 struct RedshiftAttachOptions {
 	string secret_name;
 	string region;
+	string account_id;
+	string resource;
 	string db_name;
 	string host;
 	string port;
@@ -45,6 +47,10 @@ RedshiftAttachOptions ParseAttachOptions(AttachOptions &options) {
 		}
 		if (key == "region") {
 			parsed.region = value;
+		} else if (key == "account_id") {
+			parsed.account_id = value;
+		} else if (key == "resource") {
+			parsed.resource = value;
 		} else if (key == "database" || key == "dbname") {
 			parsed.db_name = value;
 		} else if (key == "host") {
@@ -80,13 +86,16 @@ unique_ptr<Catalog> RedshiftAttach(optional_ptr<StorageExtensionInfo> storage_in
 		throw PermissionException("Attaching Redshift databases is disabled through configuration");
 	}
 
+	auto attach_options = ParseAttachOptions(options);
 	auto cluster_id = info.path;
-	if (cluster_id.empty()) {
+	if (attach_options.account_id.empty() != attach_options.resource.empty()) {
+		throw InvalidInputException("Redshift namespace resolution requires both ACCOUNT_ID and RESOURCE");
+	}
+	if (cluster_id.empty() && attach_options.resource.empty()) {
 		throw BinderException("No Redshift cluster identifier given. Pass it as the ATTACH path, e.g. "
 		                      "ATTACH '<cluster-id>' AS db (TYPE redshift)");
 	}
 
-	auto attach_options = ParseAttachOptions(options);
 	auto secret_entry = FindAwsSecret(context, attach_options.secret_name);
 	const auto &secret = dynamic_cast<const KeyValueSecret &>(*secret_entry->secret);
 
@@ -105,6 +114,12 @@ unique_ptr<Catalog> RedshiftAttach(optional_ptr<StorageExtensionInfo> storage_in
 	auto postgres_extension = RequirePostgresStorageExtension(context, "a Redshift cluster");
 
 	auto provider = CredentialsProviderFromSecret(secret, "Redshift");
+	// The ARN trampoline injects these together. Resolving them here keeps all Redshift control-plane
+	// calls behind the Redshift storage layer while preserving direct TYPE redshift attaches.
+	if (!attach_options.resource.empty()) {
+		cluster_id = Redshift::ClusterIdentifierFromNamespace(provider, attach_options.account_id,
+		                                                      attach_options.resource, region);
+	}
 
 	// Anything ATTACH pins explicitly wins over what the cluster reports, so when it pins all of
 	// them there is nothing left to discover - skip the call rather than require the caller to

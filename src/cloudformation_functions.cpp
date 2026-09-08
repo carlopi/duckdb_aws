@@ -160,7 +160,7 @@ struct CloudFormationCreateStackBindData : public TableFunctionData {
 
 static unique_ptr<FunctionData> CloudFormationCreateStackBind(ClientContext &context, TableFunctionBindInput &input,
                                                               vector<LogicalType> &return_types,
-                                                              vector<string> &names) {
+                                                              vector<Identifier> &names) {
 	auto result = make_uniq<CloudFormationCreateStackBindData>();
 
 	if (input.inputs[0].IsNull()) {
@@ -496,7 +496,7 @@ struct CloudFormationDescribeStackBindData : public TableFunctionData {
 
 static unique_ptr<FunctionData> CloudFormationDescribeStackBind(ClientContext &context, TableFunctionBindInput &input,
                                                                 vector<LogicalType> &return_types,
-                                                                vector<string> &names) {
+                                                                vector<Identifier> &names) {
 	auto result = make_uniq<CloudFormationDescribeStackBindData>();
 	result->handle = ParseHandle(input.inputs[0], "cloudformation_describe_stack");
 
@@ -603,7 +603,7 @@ struct CloudFormationDeleteStackBindData : public TableFunctionData {
 
 static unique_ptr<FunctionData> CloudFormationDeleteStackBind(ClientContext &context, TableFunctionBindInput &input,
                                                               vector<LogicalType> &return_types,
-                                                              vector<string> &names) {
+                                                              vector<Identifier> &names) {
 	auto result = make_uniq<CloudFormationDeleteStackBindData>();
 	result->handle = ParseHandle(input.inputs[0], "cloudformation_delete_stack");
 	result->handle_value = input.inputs[0];
@@ -733,7 +733,8 @@ struct CloudFormationListStacksBindData : public TableFunctionData {
 };
 
 static unique_ptr<FunctionData> CloudFormationListStacksBind(ClientContext &context, TableFunctionBindInput &input,
-                                                             vector<LogicalType> &return_types, vector<string> &names) {
+                                                             vector<LogicalType> &return_types,
+                                                             vector<Identifier> &names) {
 	auto result = make_uniq<CloudFormationListStacksBindData>();
 
 	if (input.inputs[0].IsNull()) {
@@ -978,7 +979,7 @@ struct CloudFormationDescribeStacksBindData : public TableFunctionData {
 
 static unique_ptr<FunctionData> CloudFormationDescribeStacksBind(ClientContext &context, TableFunctionBindInput &input,
                                                                  vector<LogicalType> &return_types,
-                                                                 vector<string> &names) {
+                                                                 vector<Identifier> &names) {
 	auto result = make_uniq<CloudFormationDescribeStacksBindData>();
 
 	if (input.inputs.empty()) {

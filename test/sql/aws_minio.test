@@ -34,6 +34,11 @@ SELECT * FROM 's3://test-bucket/test_basic/test.csv';
 ----
 123
 
+# FIXME: skipped after the httpfs S3 reimplementation - httpfs now auto-corrects the region from
+# the x-amz-bucket-region header MinIO returns on the 400, so the query succeeds instead of
+# throwing. Under discussion with the httpfs folks.
+mode skip
+
 # set a faulty region value on purpose
 statement ok
 CREATE OR REPLACE PERSISTENT SECRET (
@@ -49,6 +54,8 @@ statement error
 SELECT * FROM 's3://test-bucket/test_basic/test.csv';
 ----
 HTTP 400
+
+mode unskip
 
 # reset region
 statement ok

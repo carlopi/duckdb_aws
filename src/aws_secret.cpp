@@ -4,12 +4,14 @@
 
 #include "duckdb/common/case_insensitive_map.hpp"
 #include "duckdb/common/exception.hpp"
+#include "duckdb/common/file_system.hpp"
 #include "duckdb/common/types/timestamp.hpp"
 #include "duckdb/logging/logger.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
 
 #include <aws/core/Aws.h>
 #include <aws/core/auth/AWSCredentialsProviderChain.h>
+#include <aws/core/auth/GeneralHTTPCredentialsProvider.h>
 #include <aws/core/auth/SSOCredentialsProvider.h>
 #include <aws/core/auth/STSCredentialsProvider.h>
 #include <aws/core/client/ClientConfiguration.h>
@@ -152,6 +154,24 @@ public:
 				/* Credentials provider implementation that loads credentials from the Amazon EC2 Instance Metadata
 				 * Service. */
 				AddProvider(std::make_shared<Aws::Auth::InstanceProfileCredentialsProvider>());
+			} else if (item == "container") {
+				// Container credentials (ECS task role, EKS Pod Identity): resolved from the endpoint
+				// advertised by the AWS_CONTAINER_* environment variables the container runtime sets,
+				// constructed the same way the SDK's DefaultAWSCredentialsProviderChain does it.
+				// https://docs.aws.amazon.com/sdkref/latest/guide/feature-container-credentials.html
+				using Aws::Auth::GeneralHTTPCredentialsProvider;
+				auto container_provider = std::make_shared<GeneralHTTPCredentialsProvider>(
+				    FileSystem::GetEnvVariable(GeneralHTTPCredentialsProvider::AWS_CONTAINER_CREDENTIALS_RELATIVE_URI),
+				    FileSystem::GetEnvVariable(GeneralHTTPCredentialsProvider::AWS_CONTAINER_CREDENTIALS_FULL_URI),
+				    FileSystem::GetEnvVariable(GeneralHTTPCredentialsProvider::AWS_CONTAINER_AUTHORIZATION_TOKEN),
+				    FileSystem::GetEnvVariable(GeneralHTTPCredentialsProvider::AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE));
+				if (!container_provider->IsValid()) {
+					throw InvalidConfigurationException(
+					    "Chain value 'container' requires container credentials to be available: "
+					    "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI or AWS_CONTAINER_CREDENTIALS_FULL_URI must be set in "
+					    "the environment (ECS and EKS Pod Identity set these automatically)");
+				}
+				AddProvider(std::move(container_provider));
 			} else if (item == "web_identity") {
 				Aws::Client::ClientConfiguration::CredentialProviderConfiguration config;
 				if (!assume_role_arn.empty()) {
@@ -240,8 +260,8 @@ static string ConstructErrorMessage(string chain, string profile, string assume_
 	// these chains "generate" new aws keys. See their documentation in the header file
 	// https://github.com/aws/aws-sdk-cpp/blob/main/src/aws-cpp-sdk-core/include/aws/core/auth/AWSCredentialsProvider.h
 	// if a roll is assumed, secrets are also "generated"
-	if (chain == "sts" || chain == "sso" || chain == "instance" || chain == "process" || chain == "web_identity" ||
-	    !assume_role.empty()) {
+	if (chain == "sts" || chain == "sso" || chain == "instance" || chain == "container" || chain == "process" ||
+	    chain == "web_identity" || !assume_role.empty()) {
 		verb = "generate";
 	}
 	string prefix = StringUtil::Format("Secret Validation Failure: during `%s` using the following:\n", verb);
@@ -328,6 +348,13 @@ static unique_ptr<BaseSecret> CreateAWSSecretFromCredentialChain(ClientContext &
 	Aws::Auth::AWSCredentials credentials;
 
 	string profile = TryGetStringParam(input, "profile");
+	if (profile.empty()) {
+		// The SDK providers taking an explicit profile name store it verbatim, so an empty
+		// string would select the literal profile "". Resolve the name here the way the SDK's
+		// no-arg constructors do: AWS_PROFILE, then AWS_DEFAULT_PROFILE, then "default" (#177).
+		profile = Aws::Auth::GetConfigProfileName().c_str();
+	}
+	DUCKDB_LOG_DEBUG(context, "aws.CredentialChain: using profile '%s'", profile);
 	string assume_role = TryGetStringParam(input, "assume_role_arn");
 	string external_id = TryGetStringParam(input, "external_id");
 	string chain = TryGetStringParam(input, "chain");
@@ -346,6 +373,26 @@ static unique_ptr<BaseSecret> CreateAWSSecretFromCredentialChain(ClientContext &
 		}
 		if (validation == "none") {
 			require_credentials = false;
+		}
+	}
+
+	// Log the container-credentials configuration when the chain includes 'container': the
+	// AWS_CONTAINER_* values decide whether the provider is usable, and failures otherwise leave
+	// no trace of what the environment contained. The auth token value itself is never logged.
+	for (const auto &item : StringUtil::Split(chain, ';')) {
+		if (item == "container") {
+			using Aws::Auth::GeneralHTTPCredentialsProvider;
+			DUCKDB_LOG_DEBUG(
+			    context,
+			    "aws.CredentialChain: container credentials config: relative_uri='%s', full_uri='%s', "
+			    "auth_token_file='%s', auth_token %s",
+			    FileSystem::GetEnvVariable(GeneralHTTPCredentialsProvider::AWS_CONTAINER_CREDENTIALS_RELATIVE_URI),
+			    FileSystem::GetEnvVariable(GeneralHTTPCredentialsProvider::AWS_CONTAINER_CREDENTIALS_FULL_URI),
+			    FileSystem::GetEnvVariable(GeneralHTTPCredentialsProvider::AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE),
+			    FileSystem::GetEnvVariable(GeneralHTTPCredentialsProvider::AWS_CONTAINER_AUTHORIZATION_TOKEN).empty()
+			        ? "unset"
+			        : "set");
+			break;
 		}
 	}
 

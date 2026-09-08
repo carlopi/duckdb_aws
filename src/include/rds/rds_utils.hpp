@@ -32,8 +32,8 @@ struct RdsInstanceInfo {
 bool RdsEngineIsPostgres(const string &engine);
 
 struct Rds {
-	//! Register the 'rds' storage extension, which is what makes `ATTACH '<instance-id>' (TYPE rds)`
-	//! resolve here.
+	//! Register the 'rds' storage extension, which makes direct `ATTACH '<instance-id>' (TYPE rds)`
+	//! and ARN delegation through the RDS layer resolve here.
 	static void RegisterStorageExtension(ExtensionLoader &loader);
 
 	//! Look up a DB instance by identifier via the RDS `DescribeDBInstances` API. Throws when the

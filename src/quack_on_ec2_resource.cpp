@@ -45,7 +45,7 @@ static unique_ptr<GlobalTableFunctionState> QuackAdapterInit(ClientContext &, Ta
 // NOT assembled inline in the table-function argument (where `e.key`-style identifiers get silently coerced
 // to strings by the identifier-conversion rule, which would defeat the filter and leak `region`).
 static unique_ptr<FunctionData> QuackCreateBind(ClientContext &, TableFunctionBindInput &input,
-                                                vector<LogicalType> &return_types, vector<string> &names) {
+                                                vector<LogicalType> &return_types, vector<Identifier> &names) {
 	auto result = make_uniq<QuackAdapterBindData>();
 	result->input = input.inputs[0];
 	names.emplace_back("handle");
@@ -114,7 +114,7 @@ static void QuackCreateFun(ClientContext &context, TableFunctionInput &data_p, D
 // terminal 'ready'/'failed' states the poll loop expects, and projects the stack Outputs into the connect
 // endpoint (uri + attached_db_type + token). cloudformation_describe_stack is unchanged by 0002.
 static unique_ptr<FunctionData> QuackStatusBind(ClientContext &, TableFunctionBindInput &input,
-                                                vector<LogicalType> &return_types, vector<string> &names) {
+                                                vector<LogicalType> &return_types, vector<Identifier> &names) {
 	auto result = make_uniq<QuackAdapterBindData>();
 	result->input = input.inputs[0];
 	names.emplace_back("state");
@@ -149,7 +149,7 @@ static void QuackStatusFun(ClientContext &context, TableFunctionInput &data_p, D
 
 // destroy(handle MAP) -> TABLE(status VARCHAR)
 static unique_ptr<FunctionData> QuackDestroyBind(ClientContext &, TableFunctionBindInput &input,
-                                                 vector<LogicalType> &return_types, vector<string> &names) {
+                                                 vector<LogicalType> &return_types, vector<Identifier> &names) {
 	auto result = make_uniq<QuackAdapterBindData>();
 	result->input = input.inputs[0];
 	names.emplace_back("status");
@@ -188,7 +188,7 @@ static unique_ptr<GlobalTableFunctionState> QuackListInit(ClientContext &, Table
 }
 
 static unique_ptr<FunctionData> QuackListBind(ClientContext &, TableFunctionBindInput &input,
-                                              vector<LogicalType> &return_types, vector<string> &names) {
+                                              vector<LogicalType> &return_types, vector<Identifier> &names) {
 	auto result = make_uniq<QuackAdapterBindData>();
 	result->input = input.inputs[0];
 	names.emplace_back("handle");
@@ -271,8 +271,8 @@ void QuackOnEc2Resource::Register(ExtensionLoader &loader) {
 	TableFunction destroy_fn("__aws__cloudformation__quack_on_ec2__destroy", {map_vv}, QuackDestroyFun,
 	                         QuackDestroyBind, QuackAdapterInit);
 	loader.RegisterFunction(destroy_fn);
-	// Registered as a plain callable function only. Wiring it into the resource-type registry (a `list_function`
-	// slot) is a separate duckdb-side change, done elsewhere.
+	// Also wired into the resource-type registry below (as this type's `list_function`), so
+	// `SHOW ALL EXTERNAL RESOURCES` can discover existing stacks that are not locally managed.
 	TableFunction list_fn("__aws__cloudformation__quack_on_ec2__list", {map_vv}, QuackListFun, QuackListBind,
 	                      QuackListInit);
 	loader.RegisterFunction(list_fn);
@@ -284,6 +284,7 @@ void QuackOnEc2Resource::Register(ExtensionLoader &loader) {
 	type.create_function = "__aws__cloudformation__quack_on_ec2__create";
 	type.status_function = "__aws__cloudformation__quack_on_ec2__status";
 	type.destroy_function = "__aws__cloudformation__quack_on_ec2__destroy";
+	type.list_function = "__aws__cloudformation__quack_on_ec2__list";
 	type.origin = "extension";
 	ExternalResourceTypeRegistry::Get(loader.GetDatabaseInstance()).Add(std::move(type));
 }

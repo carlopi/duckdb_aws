@@ -38,7 +38,7 @@ static void LoadInternal(ExtensionLoader &loader) {
 	// Makes `ATTACH '<cluster-id>' (TYPE redshift, ...)` resolve to the redshift storage extension.
 	Redshift::RegisterStorageExtension(loader);
 
-	// Same for `ATTACH '<db-cluster-id>' (TYPE rds, ...)`.
+	// RDS is both a direct storage type and an internal ARN delegation target.
 	Rds::RegisterStorageExtension(loader);
 
 	// Makes `ATTACH 'arn:aws:...'` dispatch to the backend serving the ARN's service.
