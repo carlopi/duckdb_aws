@@ -287,29 +287,31 @@ static void QuackListFun(ClientContext &context, TableFunctionInput &data_p, Dat
 		string source = one_region.empty() ? "cloudformation_describe_stacks()"
 		                                   : "cloudformation_describe_stacks(" + Value(one_region).ToSQLString() + ")";
 
-		auto sql = "SELECT MAP {'stack_name': stack_name, 'stack_id': stack_id, 'region': region} AS handle, "
-		           "       stack_id AS reference, "
-		           "       CASE WHEN status IN ('CREATE_COMPLETE', 'UPDATE_COMPLETE') THEN 'ready' "
-		           "            WHEN status LIKE 'DELETE_%' THEN 'deleting' "
-		           "            WHEN status LIKE '%ROLLBACK%' OR status LIKE '%FAILED%' THEN 'failed' "
-		           "            ELSE 'pending' END AS state, "
-		           "       MAP {'stack_status': status, 'creation_time': creation_time, "
-		           "            'last_updated_time': last_updated_time, 'description': description, "
-		           "            'expires_at': tags[" +
-		           Value(string(EXPIRES_AT_TAG)).ToSQLString() +
-		           "]} AS metadata, "
-		           // Only a stack that finished creating can have a box that armed its own shutdown; anything
-		           // else is still in flight, failed, or already going away.
-		           "       status = 'CREATE_COMPLETE' AND "
-		           // epoch() rather than TIMESTAMPTZ + INTERVAL: both come from icu, but only the function has an
-		           // autoload placeholder, so this also binds where icu is loadable rather than built in (wasm)
-		           "       epoch(now()) - epoch(TRY_CAST(tags[" +
-		           Value(string(EXPIRES_AT_TAG)).ToSQLString() + "] AS TIMESTAMPTZ)) > " +
-		           to_string(EXPIRY_MARGIN_SECONDS) +
-		           " AS expired "
-		           "FROM " +
-		           source + " WHERE error IS NULL AND tags[" + Value(string(RESOURCE_TYPE_TAG)).ToSQLString() +
-		           "] = " + Value(string(QUACK_ON_EC2_TYPE)).ToSQLString();
+		auto sql =
+		    "SELECT MAP {'stack_name': stack_name, 'stack_id': stack_id, 'region': region} AS handle, "
+		    "       stack_id AS reference, "
+		    "       CASE WHEN status IN ('CREATE_COMPLETE', 'UPDATE_COMPLETE') THEN 'ready' "
+		    "            WHEN status LIKE 'DELETE_%' THEN 'deleting' "
+		    "            WHEN status LIKE '%ROLLBACK%' OR status LIKE '%FAILED%' THEN 'failed' "
+		    "            ELSE 'pending' END AS state, "
+		    "       MAP {'stack_status': status, 'creation_time': creation_time, "
+		    "            'last_updated_time': last_updated_time, 'description': description, "
+		    "            'expires_at': tags[" +
+		    Value(string(EXPIRES_AT_TAG)).ToSQLString() +
+		    "]} AS metadata, "
+		    // Only a stack that finished creating can have a box that armed its own shutdown; anything
+		    // else is still in flight, failed, or already going away.
+		    "       status = 'CREATE_COMPLETE' AND "
+		    // epoch_ms() rather than TIMESTAMPTZ + INTERVAL (or epoch()): those are icu overloads, and where
+		    // icu is loadable rather than built in (wasm) the operator does not autoload it at all, while
+		    // autoloading it from inside an operator icu extends breaks the bind. epoch_ms on TIMESTAMPTZ is core.
+		    "       epoch_ms(now()) - epoch_ms(TRY_CAST(tags[" +
+		    Value(string(EXPIRES_AT_TAG)).ToSQLString() + "] AS TIMESTAMPTZ)) > " +
+		    to_string(EXPIRY_MARGIN_SECONDS * 1000) +
+		    " AS expired "
+		    "FROM " +
+		    source + " WHERE error IS NULL AND tags[" + Value(string(RESOURCE_TYPE_TAG)).ToSQLString() +
+		    "] = " + Value(string(QUACK_ON_EC2_TYPE)).ToSQLString();
 
 		Connection con(DatabaseInstance::GetDatabase(context));
 		state.result = con.Query(sql);
