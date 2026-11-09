@@ -6,6 +6,8 @@ set(TARGET_NAME aws)
 set(EXTENSION_NAME ${TARGET_NAME}_extension)
 project(${TARGET_NAME})
 include_directories(src/include)
+# the loopback listener of the oauth secret provider uses the cpp-httplib DuckDB bundles
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/duckdb/third_party/httplib)
 
 # Capture the duckdb-aws extension's git short SHA at build time. Surfaced at
 # runtime as the `created-by-version` auto-tag on every stack the
@@ -26,6 +28,7 @@ set(EXTENSION_SOURCES
     src/aws_extension.cpp
     src/aws_http_client.cpp
     src/aws_secret.cpp
+    src/aws_signin_oauth.cpp
     src/cloudformation_functions.cpp
     src/create_aws_legacy_function_stubs.cpp
     src/rds/rds_utils.cpp
@@ -54,6 +57,7 @@ build_loadable_extension(${TARGET_NAME} ${PARAMETERS} ${EXTENSION_SOURCES})
 # Weirdly we need to manually do this; otherwise, linking against
 # ${AWSSDK_LINK_LIBRARIES} fails for some reason
 find_package(ZLIB REQUIRED)
+find_package(OpenSSL REQUIRED)
 find_package(
   AWSSDK REQUIRED
   COMPONENTS core
@@ -69,12 +73,12 @@ find_package(
 # Build static lib
 target_include_directories(${EXTENSION_NAME}
                            PUBLIC $<BUILD_INTERFACE:${AWSSDK_INCLUDE_DIRS}>)
-target_link_libraries(${EXTENSION_NAME} ${AWSSDK_LINK_LIBRARIES})
+target_link_libraries(${EXTENSION_NAME} ${AWSSDK_LINK_LIBRARIES} OpenSSL::Crypto)
 
 # Build loadable binary
 target_include_directories(aws_loadable_extension
                            PRIVATE $<BUILD_INTERFACE:${AWSSDK_INCLUDE_DIRS}>)
-target_link_libraries(aws_loadable_extension ${AWSSDK_LINK_LIBRARIES})
+target_link_libraries(aws_loadable_extension ${AWSSDK_LINK_LIBRARIES} OpenSSL::Crypto)
 
 install(
   TARGETS ${EXTENSION_NAME}

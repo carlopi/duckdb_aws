@@ -141,6 +141,37 @@ Configuration is through environment variables:
 
 The script can also be called directly as `python3 scripts/quack_redshift.py <action> [--force]`, where the action is `setup`, `check`, `cleanup`, or `manual-test`.
 
+## Signing in to AWS from DuckDB (PROVIDER oauth)
+
+The `oauth` secret provider signs in through AWS Sign-In's OAuth 2.0 flow, the one behind `aws login`: authorization
+code with PKCE, DPoP-bound tokens, and SigV4 credentials that last 15 minutes and are refreshed from the refresh token
+for as long as the console session lasts. No access keys are ever typed into DuckDB.
+
+```sql
+CREATE SECRET aws (TYPE aws, PROVIDER oauth, REGION 'us-east-1');                -- opens the browser, waits for the sign-in
+CREATE SECRET aws (TYPE s3,  PROVIDER oauth, REGION 'us-east-1', TIMEOUT_SECONDS 300);
+```
+
+The default `MODE 'browser'` opens AWS Sign-In in the browser and receives the authorization code on a listener bound
+to `127.0.0.1` on a port the OS picks, which is the only redirect Sign-In's same-device client accepts. The statement
+waits for the sign-in, `TIMEOUT_SECONDS` (default 120) at most. On a machine without a browser, `MODE 'code'` prints
+the URL to open elsewhere; Sign-In then shows a code, which completes the same statement in the same session:
+
+```sql
+CREATE SECRET aws (TYPE aws, PROVIDER oauth, REGION 'us-east-1', MODE 'code');   -- prints the URL, creates nothing yet
+CREATE SECRET aws (TYPE aws, PROVIDER oauth, REGION 'us-east-1', CODE 'c3RhdGU9...');
+```
+
+The secret holds `key_id`, `secret`, `session_token`, `region`, `expiration_epoch_ms`, the signed-in principal as
+`identity`, and a `refresh_info` with the refresh token and the DPoP key, redacted. Refresh is on by default (`REFRESH 'auto'`) and follows the usual httpfs mechanism: the provider is re-run with
+`refresh_info` and asks Sign-In for new credentials with the refresh token, for as long as the console session lasts;
+`REFRESH 'none'` keeps only the first 15 minutes of credentials.
+`CLIENT` names another Sign-In OAuth client; `OAUTH_SCOPE` defaults to `openid`.
+
+The principal needs the `SignInLocalDevelopmentAccess` policy (`signin:AuthorizeOAuth2Access`,
+`signin:CreateOAuth2Token`); Sign-In's errors are reported in those terms. Keep these secrets temporary: a persistent
+one stores a refresh token good for the rest of the console session in `~/.duckdb/stored_secrets`.
+
 ## Tests
 
 - [Redshift test setup](test/sql/redshift/README.md)

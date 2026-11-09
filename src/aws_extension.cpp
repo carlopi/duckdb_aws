@@ -1,6 +1,7 @@
 #include "arn_storage.hpp"
 #include "aws_default_secret_storage.hpp"
 #include "aws_secret.hpp"
+#include "aws_signin_oauth.hpp"
 #include "aws_extension.hpp"
 #include "aws_http_client.hpp"
 #include "cloudformation_functions.hpp"
@@ -44,6 +45,8 @@ static void LoadInternal(ExtensionLoader &loader) {
 	CreateAwsSecretFunctions::InitializeCurlCertificates(loader.GetDatabaseInstance());
 	CreateAwsLegacyFunctionStubs::Register(loader);
 	CreateAwsSecretFunctions::Register(loader);
+	// CREATE SECRET (TYPE aws, PROVIDER oauth): sign in through AWS Sign-In, the flow of `aws login`
+	AwsSigninOAuth::Register(loader);
 	AwsDefaultSecretStorage::Register(loader);
 
 	// Makes `ATTACH '<cluster-id>' (TYPE redshift, ...)` resolve to the redshift storage extension.
