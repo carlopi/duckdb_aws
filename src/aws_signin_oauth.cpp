@@ -32,14 +32,27 @@
 #include <openssl/pem.h>
 #include <openssl/rand.h>
 
+#if !defined(__EMSCRIPTEN__)
 #include <chrono>
 #include <thread>
 
 #include "httplib.hpp"
+#endif
 
 namespace duckdb {
 
 namespace {
+
+#if defined(__EMSCRIPTEN__)
+
+//! No sign-in from wasm: the same-device flow needs a loopback listener for Sign-In's redirect, and the browser
+//! shell can neither bind a port nor run the listener thread. The provider stays registered so the error is
+//! this one rather than "unknown provider".
+unique_ptr<BaseSecret> CreateAWSSecretFromOAuth(ClientContext &context, CreateSecretInput &input) {
+	throw NotImplementedException("The oauth secret provider is not available in DuckDB-Wasm");
+}
+
+#else
 
 //! AWS Sign-In's public OAuth clients, the ones `aws login` uses. The same-device one may only be redirected
 //! to http://127.0.0.1:<port>/oauth/callback, which is where the loopback listener below sits; the cross-device
@@ -682,6 +695,8 @@ unique_ptr<BaseSecret> CreateAWSSecretFromOAuth(ClientContext &context, CreateSe
 	auto tokens = TokenRequest(context, settings, key, std::move(body));
 	return BuildSecret(input, settings, key, tokens, refresh);
 }
+
+#endif // !__EMSCRIPTEN__
 
 } // namespace
 
